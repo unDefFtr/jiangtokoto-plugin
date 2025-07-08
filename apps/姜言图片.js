@@ -14,7 +14,7 @@ export class JiangtokotoImage extends plugin {
 
     async getRandomImage(e) {
         try {
-            await e.reply('正在获取，请稍等喵~');
+            // await e.reply('正在获取，请稍等喵~');
             
             // 从API获取图片
             const response = await fetch('https://api.jiangtokoto.cn/memes/random');
@@ -51,6 +51,7 @@ export class JiangtokotoImage extends plugin {
             } else {
                 errorMsg += '未知错误';
             }
+            errorMsg += "喵~";
             
             await e.reply(errorMsg);
         }
