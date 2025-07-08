@@ -1,3 +1,4 @@
+import plugin from '../../../lib/plugins/plugin.js';
 export class JiangtokotoImage extends plugin {
     constructor() {
         super({

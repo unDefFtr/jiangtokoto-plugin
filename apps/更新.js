@@ -1,5 +1,5 @@
 import plugin from '../../../lib/plugins/plugin.js';
-import { update as Update } from "../../other/update.js"
+import { update as UpdateHandler } from "../../other/update.js"
 export class Update extends plugin {
     constructor() {
         super({
@@ -19,7 +19,7 @@ export class Update extends plugin {
         if (!e.isMaster) return;
         if (e.at && !e.atme) return;
         e.msg = `#${e.msg.includes("强制") ? "强制" : ""}更新Jiangtokoto-plugin`;
-        const up = new Update(e);
+        const up = new UpdateHandler(e);
         up.e = e;
         return up.update();
     }
