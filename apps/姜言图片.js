@@ -22,7 +22,7 @@ export class JiangtokotoImage extends plugin {
 
     async getRandomImage(e) {
         try {
-            await e.reply('正在获取姜言图片...');
+            // await e.reply('正在获取姜言图片...');
             
             // 使用redirect=true获取固定URL
             const redirectResponse = await fetch('https://api.jiangtokoto.cn/memes/random?redirect=true');
