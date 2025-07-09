@@ -25,18 +25,15 @@ export class JiangtokotoImage extends plugin {
             await e.reply('正在获取姜言图片...');
             
             // 使用redirect=true获取固定URL
-            const redirectResponse = await fetch('https://api.jiangtokoto.cn/memes/random?redirect=true', {
-                redirect: 'manual'
-            });
+            const redirectResponse = await fetch('https://api.jiangtokoto.cn/memes/random?redirect=true');
             
-            if (redirectResponse.status !== 302) {
-                throw new Error(`获取重定向失败: ${redirectResponse.status}`);
+            if (!redirectResponse.ok) {
+                throw new Error(`HTTP error! status: ${redirectResponse.status}`);
             }
             
-            const redirectUrl = redirectResponse.headers.get('location');
-            if (!redirectUrl) {
-                throw new Error('未获取到重定向URL');
-            }
+            // 获取最终的URL（已经重定向后的URL）
+            const redirectUrl = redirectResponse.url;
+            logger.info(`[姜言图片] 重定向URL: ${redirectUrl}`);
             
             // 从URL中提取图片ID
             const imageId = redirectUrl.split('/').pop();
@@ -51,14 +48,8 @@ export class JiangtokotoImage extends plugin {
                 base64Image = cachedImage.toString('base64');
             } else {
                 logger.info(`[姜言图片] 下载新图片: ${imageId}`);
-                // 下载图片
-                const imageResponse = await fetch(redirectUrl);
-                
-                if (!imageResponse.ok) {
-                    throw new Error(`HTTP error! status: ${imageResponse.status}`);
-                }
-                
-                const imageBuffer = await imageResponse.arrayBuffer();
+                // 直接使用已经获取的响应数据
+                const imageBuffer = await redirectResponse.arrayBuffer();
                 const imageData = Buffer.from(imageBuffer);
                 
                 // 保存到本地缓存
