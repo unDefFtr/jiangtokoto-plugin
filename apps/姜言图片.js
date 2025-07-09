@@ -1,4 +1,6 @@
 import plugin from '../../../lib/plugins/plugin.js';
+import fs from 'fs';
+import path from 'path';
 export class JiangtokotoImage extends plugin {
     constructor() {
         super({
@@ -10,22 +12,59 @@ export class JiangtokotoImage extends plugin {
                 fnc: 'getRandomImage'
             }],
         });
+        
+        // 创建缓存目录
+        this.cacheDir = path.join(process.cwd(), 'data', 'jiangtokoto-cache');
+        if (!fs.existsSync(this.cacheDir)) {
+            fs.mkdirSync(this.cacheDir, { recursive: true });
+        }
     }
 
     async getRandomImage(e) {
         try {
-            // await e.reply('正在获取，请稍等喵~');
+            await e.reply('正在获取姜言图片...');
             
-            // 从API获取图片
-            const response = await fetch('https://api.jiangtokoto.cn/memes/random');
+            // 使用redirect=true获取固定URL
+            const redirectResponse = await fetch('https://api.jiangtokoto.cn/memes/random?redirect=true', {
+                redirect: 'manual'
+            });
             
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+            if (redirectResponse.status !== 302) {
+                throw new Error(`获取重定向失败: ${redirectResponse.status}`);
             }
             
-            // 获取图片的二进制数据
-            const imageBuffer = await response.arrayBuffer();
-            const base64Image = Buffer.from(imageBuffer).toString('base64');
+            const redirectUrl = redirectResponse.headers.get('location');
+            if (!redirectUrl) {
+                throw new Error('未获取到重定向URL');
+            }
+            
+            // 从URL中提取图片ID
+            const imageId = redirectUrl.split('/').pop();
+            const cacheFilePath = path.join(this.cacheDir, `${imageId}.jpg`);
+            
+            let base64Image;
+            
+            // 检查本地缓存
+            if (fs.existsSync(cacheFilePath)) {
+                logger.info(`[姜言图片] 使用缓存图片: ${imageId}`);
+                const cachedImage = fs.readFileSync(cacheFilePath);
+                base64Image = cachedImage.toString('base64');
+            } else {
+                logger.info(`[姜言图片] 下载新图片: ${imageId}`);
+                // 下载图片
+                const imageResponse = await fetch(redirectUrl);
+                
+                if (!imageResponse.ok) {
+                    throw new Error(`HTTP error! status: ${imageResponse.status}`);
+                }
+                
+                const imageBuffer = await imageResponse.arrayBuffer();
+                const imageData = Buffer.from(imageBuffer);
+                
+                // 保存到本地缓存
+                fs.writeFileSync(cacheFilePath, imageData);
+                base64Image = imageData.toString('base64');
+            }
             
             // 发送图片
             await e.reply(segment.image(`base64://${base64Image}`));
