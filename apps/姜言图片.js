@@ -15,49 +15,139 @@ export class JiangtokotoImage extends plugin {
         
         // 创建缓存目录
         this.cacheDir = path.join(process.cwd(), 'data', 'jiangtokoto-cache');
+        this.listFile = path.join(this.cacheDir, 'memes-list.json');
         if (!fs.existsSync(this.cacheDir)) {
             fs.mkdirSync(this.cacheDir, { recursive: true });
+        }
+        
+        // 初始化时检查并同步
+        this.initializeCache();
+    }
+    
+    async initializeCache() {
+        try {
+            // 如果本地列表不存在，先同步一次
+            if (!fs.existsSync(this.listFile)) {
+                await this.syncMemesList();
+            }
+        } catch (error) {
+            logger.error(`[姜言图片] 初始化缓存失败: ${error.message}`);
+        }
+    }
+    
+    async syncMemesList() {
+        try {
+            logger.info('[姜言图片] 开始同步表情包列表...');
+            const response = await fetch('https://api.jiangtokoto.cn/memes/list');
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const remoteList = await response.json();
+            let localList = [];
+            
+            // 读取本地列表
+            if (fs.existsSync(this.listFile)) {
+                const localData = fs.readFileSync(this.listFile, 'utf8');
+                localList = JSON.parse(localData);
+            }
+            
+            // 找出新增的表情包
+            const localIds = new Set(localList.map(item => item.id));
+            const newMemes = remoteList.filter(item => !localIds.has(item.id));
+            
+            if (newMemes.length > 0) {
+                logger.info(`[姜言图片] 发现 ${newMemes.length} 个新表情包，开始下载...`);
+                
+                // 下载新表情包
+                for (const meme of newMemes) {
+                    await this.downloadMeme(meme);
+                }
+                
+                // 更新本地列表
+                fs.writeFileSync(this.listFile, JSON.stringify(remoteList, null, 2));
+                logger.info(`[姜言图片] 同步完成，共 ${remoteList.length} 个表情包`);
+            } else {
+                logger.info('[姜言图片] 表情包列表已是最新');
+            }
+            
+        } catch (error) {
+            logger.error(`[姜言图片] 同步列表失败: ${error.message}`);
+        }
+    }
+    
+    async downloadMeme(meme) {
+        try {
+            const ext = meme.mime_type === 'image/png' ? 'png' : 'jpg';
+            const filePath = path.join(this.cacheDir, `${meme.id}.${ext}`);
+            
+            if (fs.existsSync(filePath)) {
+                return; // 已存在，跳过
+            }
+            
+            const response = await fetch(`https://api.jiangtokoto.cn/memes/get/${meme.id}`);
+            
+            if (!response.ok) {
+                throw new Error(`下载失败: ${response.status}`);
+            }
+            
+            const imageBuffer = await response.arrayBuffer();
+            fs.writeFileSync(filePath, Buffer.from(imageBuffer));
+            
+            logger.info(`[姜言图片] 下载完成: ${meme.filename}`);
+            
+        } catch (error) {
+            logger.error(`[姜言图片] 下载表情包 ${meme.id} 失败: ${error.message}`);
         }
     }
 
     async getRandomImage(e) {
         try {
-            // await e.reply('正在获取姜言图片...');
+            // 后台异步检查更新（不阻塞用户请求）
+            this.syncMemesList().catch(err => {
+                logger.error(`[姜言图片] 后台同步失败: ${err.message}`);
+            });
             
-            // 使用redirect=true获取固定URL
-            const redirectResponse = await fetch('https://api.jiangtokoto.cn/memes/random?redirect=true');
-            
-            if (!redirectResponse.ok) {
-                throw new Error(`HTTP error! status: ${redirectResponse.status}`);
+            // 读取本地表情包列表
+            if (!fs.existsSync(this.listFile)) {
+                await e.reply('表情包列表为空，正在初始化...');
+                await this.syncMemesList();
+                if (!fs.existsSync(this.listFile)) {
+                    throw new Error('无法获取表情包列表');
+                }
             }
             
-            // 获取最终的URL（已经重定向后的URL）
-            const redirectUrl = redirectResponse.url;
-            logger.info(`[姜言图片] 重定向URL: ${redirectUrl}`);
+            const localData = fs.readFileSync(this.listFile, 'utf8');
+            const memesList = JSON.parse(localData);
             
-            // 从URL中提取图片ID
-            const imageId = redirectUrl.split('/').pop();
-            const cacheFilePath = path.join(this.cacheDir, `${imageId}.jpg`);
+            if (memesList.length === 0) {
+                throw new Error('表情包列表为空');
+            }
             
-            let base64Image;
+            // 随机选择一个表情包
+            const randomIndex = Math.floor(Math.random() * memesList.length);
+            const selectedMeme = memesList[randomIndex];
             
-            // 检查本地缓存
-            if (fs.existsSync(cacheFilePath)) {
-                logger.info(`[姜言图片] 使用缓存图片: ${imageId}`);
-                const cachedImage = fs.readFileSync(cacheFilePath);
-                base64Image = cachedImage.toString('base64');
-            } else {
-                logger.info(`[姜言图片] 下载新图片: ${imageId}`);
-                // 直接使用已经获取的响应数据
-                const imageBuffer = await redirectResponse.arrayBuffer();
-                const imageData = Buffer.from(imageBuffer);
+            // 构建本地文件路径
+            const ext = selectedMeme.mime_type === 'image/png' ? 'png' : 'jpg';
+            const localFilePath = path.join(this.cacheDir, `${selectedMeme.id}.${ext}`);
+            
+            // 检查本地文件是否存在
+            if (!fs.existsSync(localFilePath)) {
+                logger.info(`[姜言图片] 本地文件不存在，重新下载: ${selectedMeme.filename}`);
+                await this.downloadMeme(selectedMeme);
                 
-                // 保存到本地缓存
-                fs.writeFileSync(cacheFilePath, imageData);
-                base64Image = imageData.toString('base64');
+                if (!fs.existsSync(localFilePath)) {
+                    throw new Error(`下载文件失败: ${selectedMeme.filename}`);
+                }
             }
             
-            // 发送图片
+            // 读取本地文件并发送
+            const imageData = fs.readFileSync(localFilePath);
+            const base64Image = imageData.toString('base64');
+            
+            logger.info(`[姜言图片] 发送表情包: ${selectedMeme.filename}`);
             await e.reply(segment.image(`base64://${base64Image}`));
             
         } catch (error) {
@@ -79,7 +169,7 @@ export class JiangtokotoImage extends plugin {
             } else if (error.message.includes('timeout')) {
                 errorMsg += '连接超时';
             } else {
-                errorMsg += '未知错误';
+                errorMsg += error.message || '未知错误';
             }
             errorMsg += "喵~";
             
