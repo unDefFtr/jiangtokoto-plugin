@@ -30,6 +30,9 @@ export class JiangtokotoImage extends plugin {
             // 如果本地列表不存在，先同步一次
             if (!fs.existsSync(this.listFile)) {
                 await this.syncMemesList();
+            } else {
+                // 如果本地列表存在，设置初始同步时间为当前时间
+                this.lastSyncTime = Date.now();
             }
         } catch (error) {
             logger.error(`[姜言图片] 初始化缓存失败: ${error.message}`);
@@ -124,6 +127,7 @@ export class JiangtokotoImage extends plugin {
             // 读取本地表情包列表
             if (!fs.existsSync(this.listFile)) {
                 await e.reply('表情包列表为空，正在初始化...');
+                // 强制同步一次（忽略时间间隔）
                 await this.syncMemesList();
                 if (!fs.existsSync(this.listFile)) {
                     throw new Error('无法获取表情包列表');
