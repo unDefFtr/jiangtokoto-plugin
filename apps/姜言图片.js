@@ -16,7 +16,7 @@ export class JiangtokotoImage extends plugin {
         // 创建缓存目录
         this.cacheDir = path.join(process.cwd(), 'data', 'jiangtokoto-cache');
         this.listFile = path.join(this.cacheDir, 'memes-list.json');
-        this.lastSyncTime = 0; // 上次同步时间戳
+        this.syncTimeFile = path.join(this.cacheDir, 'last-sync-time.txt');
         if (!fs.existsSync(this.cacheDir)) {
             fs.mkdirSync(this.cacheDir, { recursive: true });
         }
@@ -30,19 +30,37 @@ export class JiangtokotoImage extends plugin {
             // 如果本地列表不存在，先同步一次
             if (!fs.existsSync(this.listFile)) {
                 await this.syncMemesList();
-            } else {
-                // 如果本地列表存在，设置初始同步时间为当前时间
-                this.lastSyncTime = Date.now();
             }
         } catch (error) {
             logger.error(`[姜言图片] 初始化缓存失败: ${error.message}`);
         }
     }
     
+    getLastSyncTime() {
+        try {
+            if (fs.existsSync(this.syncTimeFile)) {
+                const timeStr = fs.readFileSync(this.syncTimeFile, 'utf8');
+                return parseInt(timeStr) || 0;
+            }
+        } catch (error) {
+            logger.error(`[姜言图片] 读取同步时间失败: ${error.message}`);
+        }
+        return 0;
+    }
+    
+    setLastSyncTime(timestamp) {
+        try {
+            fs.writeFileSync(this.syncTimeFile, timestamp.toString());
+        } catch (error) {
+            logger.error(`[姜言图片] 保存同步时间失败: ${error.message}`);
+        }
+    }
+    
     async syncMemesList() {
         try {
             // 更新同步时间戳
-            this.lastSyncTime = Date.now();
+            const now = Date.now();
+            this.setLastSyncTime(now);
             logger.info('[姜言图片] 开始同步表情包列表...');
             const response = await fetch('https://api.jiangtokoto.cn/memes/list');
             
@@ -112,7 +130,8 @@ export class JiangtokotoImage extends plugin {
         try {
             // 检查是否需要同步（距离上次同步超过5秒才同步）
             const now = Date.now();
-            const timeSinceLastSync = now - this.lastSyncTime;
+            const lastSyncTime = this.getLastSyncTime();
+            const timeSinceLastSync = now - lastSyncTime;
             const syncInterval = 5000; // 5秒间隔
             
             if (timeSinceLastSync >= syncInterval) {
