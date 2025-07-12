@@ -16,6 +16,7 @@ export class JiangtokotoImage extends plugin {
         // 创建缓存目录
         this.cacheDir = path.join(process.cwd(), 'data', 'jiangtokoto-cache');
         this.listFile = path.join(this.cacheDir, 'memes-list.json');
+        this.lastSyncTime = 0; // 上次同步时间戳
         if (!fs.existsSync(this.cacheDir)) {
             fs.mkdirSync(this.cacheDir, { recursive: true });
         }
@@ -37,6 +38,8 @@ export class JiangtokotoImage extends plugin {
     
     async syncMemesList() {
         try {
+            // 更新同步时间戳
+            this.lastSyncTime = Date.now();
             logger.info('[姜言图片] 开始同步表情包列表...');
             const response = await fetch('https://api.jiangtokoto.cn/memes/list');
             
@@ -104,10 +107,19 @@ export class JiangtokotoImage extends plugin {
 
     async getRandomImage(e) {
         try {
-            // 后台异步检查更新（不阻塞用户请求）
-            this.syncMemesList().catch(err => {
-                logger.error(`[姜言图片] 后台同步失败: ${err.message}`);
-            });
+            // 检查是否需要同步（距离上次同步超过5秒才同步）
+            const now = Date.now();
+            const timeSinceLastSync = now - this.lastSyncTime;
+            const syncInterval = 5000; // 5秒间隔
+            
+            if (timeSinceLastSync >= syncInterval) {
+                // 后台异步检查更新（不阻塞用户请求）
+                this.syncMemesList().catch(err => {
+                    logger.error(`[姜言图片] 后台同步失败: ${err.message}`);
+                });
+            } else {
+                logger.info(`[姜言图片] 距离上次同步仅${Math.round(timeSinceLastSync/1000)}秒，跳过同步`);
+            }
             
             // 读取本地表情包列表
             if (!fs.existsSync(this.listFile)) {
